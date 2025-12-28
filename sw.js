@@ -1,4 +1,4 @@
-const cacheName = 'meine-pwa-v1';
+const cacheName = 'meine-pwa-v2';
 const assets = ['./', './index.html', './manifest.json'];
 
 // Dateien in den Cache laden
@@ -17,4 +17,5 @@ self.addEventListener('fetch', e => {
       return response || fetch(e.request);
     })
   );
+
 });
