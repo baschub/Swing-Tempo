@@ -1,6 +1,6 @@
 {
-  "name": "Swing Tempo by Bastian",
-  "short_name": "Swing Tempo",
+  "name": "Golf Tempo Pro by Bastian",
+  "short_name": "Golf Tempo",
   "start_url": "index.html",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -14,3 +14,4 @@
   ]
 
 }
+
