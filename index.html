@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GOLF TEMPO PRO</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        
+        body {
+            background-color: #020617;
+            color: #f8fafc;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            touch-action: none;
+        }
+
+        /* Custom Slider Styling */
+        input[type='range'] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+            cursor: pointer;
+        }
+
+        input[type='range']::-webkit-slider-runnable-track {
+            background: #1e293b;
+            height: 8px;
+            border-radius: 4px;
+        }
+
+        input[type='range']::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            margin-top: -8px;
+            background-color: #facc15;
+            height: 24px;
+            width: 24px;
+            border-radius: 50%;
+            box-shadow: 0 0 15px rgba(250, 204, 21, 0.4);
+        }
+
+        .active-glow {
+            box-shadow: 0 0 20px rgba(250, 204, 21, 0.4);
+        }
+
+        .stop-glow {
+            box-shadow: 0 0 20px rgba(220, 38, 38, 0.4);
+        }
+    </style>
+
+<link rel="manifest" href="manifest.json">
+
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js')
+      .then(() => console.log("Service Worker registriert"))
+      .catch(err => console.log("Fehler:", err));
+  }
+</script>
+
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+
+</head>
+<body class="flex flex-col h-screen">
+
+    <!-- Header -->
+    <header class="p-6 text-center border-b border-slate-800 shrink-0">
+        <h1 class="text-2xl font-black tracking-tighter uppercase">
+            GOLF <span class="text-yellow-400">TEMPO</span> PRO
+        </h1>
+    </header>
+
+    <!-- Canvas Area -->
+    <main class="relative flex-grow flex items-center justify-center overflow-hidden">
+        <canvas id="golfCanvas" class="w-full h-full"></canvas>
+    </main>
+
+    <!-- Controls -->
+    <footer class="p-6 pb-10 space-y-6 bg-slate-900/80 backdrop-blur-md border-t border-slate-800 shrink-0">
+        <div class="grid grid-cols-2 gap-6">
+            <!-- Duration Control -->
+            <div class="space-y-2">
+                <div class="flex justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <span>Dauer</span>
+                    <span id="durationVal" class="text-yellow-400">1.2s</span>
+                </div>
+                <input type="range" id="durationInput" min="0.8" max="4.0" step="0.1" value="1.2" class="w-full">
+            </div>
+
+            <!-- Ratio Control -->
+            <div class="space-y-2">
+                <div class="flex justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    <span>Ratio</span>
+                    <span id="ratioVal" class="text-yellow-400">3.0:1</span>
+                </div>
+                <input type="range" id="ratioInput" min="1.0" max="4.0" step="0.1" value="3.0" class="w-full">
+            </div>
+        </div>
+
+        <div class="flex items-center gap-4">
+            <!-- Handedness Toggle -->
+            <div class="flex p-1 bg-slate-800 rounded-full w-40 shrink-0">
+                <button id="btnRight" class="flex-1 py-2 text-xs font-bold rounded-full bg-slate-100 text-slate-900 transition-all">RECHTS</button>
+                <button id="btnLeft" class="flex-1 py-2 text-xs font-bold rounded-full text-slate-400 transition-all">LINKS</button>
+            </div>
+
+            <!-- Start/Stop Button -->
+            <button id="startBtn" class="flex-grow py-4 bg-yellow-400 text-slate-900 rounded-xl font-black text-lg tracking-widest active-glow transition-all active:scale-95">
+                START
+            </button>
+        </div>
+    </footer>
+
+    <script>
+        /** 
+         * AUDIO ENGINE 
+         */
+        class AudioEngine {
+            constructor() {
+                this.ctx = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+            }
+
+            playTick() {
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(880, this.ctx.currentTime);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.1);
+            }
+
+            playStart() {
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(1000, this.ctx.currentTime);
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.3);
+            }
+
+            playTop() {
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, this.ctx.currentTime);
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.2);
+            }
+
+            playImpact() {
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(1500, this.ctx.currentTime);
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.15);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.15);
+            }
+        }
+
+        /**
+         * APP LOGIC
+         */
+        const canvas = document.getElementById('golfCanvas');
+        const ctx = canvas.getContext('2d');
+        const audio = new AudioEngine();
+
+        // UI Elements
+        const durationInput = document.getElementById('durationInput');
+        const durationVal = document.getElementById('durationVal');
+        const ratioInput = document.getElementById('ratioInput');
+        const ratioVal = document.getElementById('ratioVal');
+        const btnRight = document.getElementById('btnRight');
+        const btnLeft = document.getElementById('btnLeft');
+        const startBtn = document.getElementById('startBtn');
+
+        // State
+        let isActive = false;
+        let handedness = 'Right'; // 'Right' or 'Left'
+        let currentPhase = 'IDLE'; // IDLE, COUNTDOWN, BACKSWING, DOWNSWING, IMPACT, PAUSE
+        let progress = 0;
+        let countdown = 0;
+        let startTime = 0;
+        let wakeLock = null;
+
+        const COUNTDOWN_TOTAL = 5;
+
+        // Settings Listeners
+        durationInput.addEventListener('input', (e) => {
+            durationVal.textContent = parseFloat(e.target.value).toFixed(1) + 's';
+        });
+        ratioInput.addEventListener('input', (e) => {
+            ratioVal.textContent = parseFloat(e.target.value).toFixed(1) + ':1';
+        });
+        btnRight.addEventListener('click', () => setHandedness('Right'));
+        btnLeft.addEventListener('click', () => setHandedness('Left'));
+
+        function setHandedness(h) {
+            handedness = h;
+            if (h === 'Right') {
+                btnRight.className = 'flex-1 py-2 text-xs font-bold rounded-full bg-slate-100 text-slate-900 transition-all';
+                btnLeft.className = 'flex-1 py-2 text-xs font-bold rounded-full text-slate-400 transition-all';
+            } else {
+                btnLeft.className = 'flex-1 py-2 text-xs font-bold rounded-full bg-slate-100 text-slate-900 transition-all';
+                btnRight.className = 'flex-1 py-2 text-xs font-bold rounded-full text-slate-400 transition-all';
+            }
+        }
+
+        // Toggle App
+        startBtn.addEventListener('click', async () => {
+            if (!isActive) {
+                isActive = true;
+                startBtn.textContent = 'STOPP';
+                startBtn.classList.remove('bg-yellow-400', 'text-slate-900', 'active-glow');
+                startBtn.classList.add('bg-red-600', 'text-white', 'stop-glow');
+                startPhase('COUNTDOWN');
+                
+                // Wake Lock
+                if ('wakeLock' in navigator) {
+                    try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+                }
+            } else {
+                isActive = false;
+                startBtn.textContent = 'START';
+                startBtn.classList.add('bg-yellow-400', 'text-slate-900', 'active-glow');
+                startBtn.classList.remove('bg-red-600', 'text-white', 'stop-glow');
+                currentPhase = 'IDLE';
+                if (wakeLock) { wakeLock.release(); wakeLock = null; }
+            }
+        });
+
+        function startPhase(phase) {
+            currentPhase = phase;
+            startTime = performance.now();
+            progress = 0;
+
+            if (phase === 'COUNTDOWN') {
+                countdown = COUNTDOWN_TOTAL;
+                audio.playTick(); // Beep für die '5'
+            } else if (phase === 'BACKSWING') {
+                audio.playStart();
+            } else if (phase === 'DOWNSWING') {
+                audio.playTop();
+            } else if (phase === 'IMPACT') {
+                audio.playImpact();
+            }
+        }
+
+        /**
+         * DRAWING & ANIMATION
+         */
+        function animate(time) {
+            requestAnimationFrame(animate);
+            update(time);
+            draw();
+        }
+
+        function update(time) {
+            if (!isActive) return;
+
+            const elapsed = time - startTime;
+            const duration = parseFloat(durationInput.value);
+            const ratio = parseFloat(ratioInput.value);
+            
+            const backDuration = (duration * (ratio / (ratio + 1))) * 1000;
+            const downDuration = (duration * (1 / (ratio + 1))) * 1000;
+
+            if (currentPhase === 'COUNTDOWN') {
+                const nextCountdown = Math.max(0, COUNTDOWN_TOTAL - Math.floor(elapsed / 1000));
+                if (nextCountdown !== countdown && nextCountdown > 0) {
+                    countdown = nextCountdown;
+                    audio.playTick();
+                }
+                if (elapsed >= COUNTDOWN_TOTAL * 1000) startPhase('BACKSWING');
+            } 
+            else if (currentPhase === 'BACKSWING') {
+                progress = Math.min(1, elapsed / backDuration);
+                if (progress >= 1) startPhase('DOWNSWING');
+            } 
+            else if (currentPhase === 'DOWNSWING') {
+                progress = Math.min(1, elapsed / downDuration);
+                if (progress >= 1) startPhase('IMPACT');
+            } 
+            else if (currentPhase === 'IMPACT') {
+                if (elapsed >= 600) startPhase('PAUSE');
+            } 
+            else if (currentPhase === 'PAUSE') {
+                if (elapsed >= 1000) startPhase('COUNTDOWN');
+            }
+        }
+
+        function draw() {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = canvas.clientWidth * dpr;
+            canvas.height = canvas.clientHeight * dpr;
+            ctx.scale(dpr, dpr);
+
+            const w = canvas.clientWidth;
+            const h = canvas.clientHeight;
+            const cx = w / 2;
+            const cy = h / 2;
+            const radius = Math.min(w, h) * 0.38;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // 1. Golfer Silhouette
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, 45, 22, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+            ctx.fillStyle = '#1e293b';
+            ctx.fill();
+            ctx.stroke();
+
+            // 2. Swing Angles
+            const startAngle = -Math.PI / 2; // 12 Uhr
+            const swingRange = Math.PI;      // 180 Grad
+            const dir = handedness === 'Right' ? 1 : -1;
+
+            let currentAngle = startAngle;
+            let arcColor = 'transparent';
+
+            if (currentPhase === 'BACKSWING') {
+                currentAngle = startAngle + (swingRange * progress * dir);
+                arcColor = '#22c55e';
+            } else if (currentPhase === 'DOWNSWING') {
+                currentAngle = (startAngle + swingRange * dir) - (swingRange * progress * dir);
+                arcColor = '#ef4444';
+            }
+
+            // 3. Side Guide (Gepunktet)
+            ctx.setLineDash([6, 6]);
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            // Rechts: Halbkreis rechts, Links: Halbkreis links
+            ctx.arc(cx, cy, radius, -Math.PI/2, Math.PI/2, handedness === 'Left');
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 4. Colored Swing Arc
+            if (currentPhase === 'BACKSWING' || currentPhase === 'DOWNSWING') {
+                ctx.strokeStyle = arcColor;
+                ctx.lineWidth = 8;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                if (currentPhase === 'BACKSWING') {
+                    ctx.arc(cx, cy, radius, startAngle, currentAngle, handedness === 'Left');
+                } else {
+                    const topPos = startAngle + swingRange * dir;
+                    ctx.arc(cx, cy, radius, topPos, currentAngle, handedness === 'Right');
+                }
+                ctx.stroke();
+            }
+
+            // 5. Impact Glow
+            if (currentPhase === 'IMPACT') {
+                const grad = ctx.createRadialGradient(cx, cy - radius, 2, cx, cy - radius, 60);
+                grad.addColorStop(0, 'rgba(250, 204, 21, 0.9)');
+                grad.addColorStop(0.5, 'rgba(250, 204, 21, 0.2)');
+                grad.addColorStop(1, 'rgba(250, 204, 21, 0)');
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(cx, cy - radius, 60, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // 6. Club
+            const clubX = cx + Math.cos(currentAngle) * radius;
+            const clubY = cy + Math.sin(currentAngle) * radius;
+
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 7;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(clubX, clubY);
+            ctx.stroke();
+
+            // Head
+            let headColor = '#facc15';
+            if (currentPhase === 'BACKSWING') headColor = '#22c55e';
+            if (currentPhase === 'DOWNSWING') headColor = '#ef4444';
+            
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = headColor;
+            ctx.fillStyle = headColor;
+            ctx.beginPath();
+            ctx.arc(clubX, clubY, 14, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // 7. Countdown Overlay
+            if (currentPhase === 'COUNTDOWN' && countdown > 0) {
+                ctx.font = '900 220px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+                ctx.fillText(countdown.toString(), cx, cy);
+            }
+        }
+
+        // Init
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
